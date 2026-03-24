@@ -57,9 +57,55 @@ python planner.py
 # Complex scenario with A* heuristic (no visualization)
 python planner.py --scenario complex --algorithm astar --heuristic untreated_victims --no-viz
 
+# Custom graph/scenario JSON file
+python planner.py --custom-scenario-file custom_scenario_example.json --algorithm astar --heuristic untreated_victims --no-viz
+
 # Benchmark all algorithms
 python benchmarks.py --repeats 5 --heuristic untreated_victims --output-json benchmark_results.json --output-csv benchmark_results.csv
 ```
+
+## Custom Graph File Format
+
+Use `--custom-scenario-file <path>` to load your own graph and planning problem.
+When this flag is provided, it overrides `--scenario`.
+
+Required JSON fields:
+
+- `locations`: list of location names.
+- `roads`: list of roads with:
+  - `from`: source location
+  - `to`: destination location
+  - `status`: `"clear"` or `"blocked"`
+- `resources`: object mapping resource name -> starting location.
+  - Use `Bulldozer*` names for clearing actions.
+  - Use `MedTeam*` names for treatment actions.
+- `victims_untreated`: list of locations currently needing treatment.
+- `goal_treated`: list of locations that must be treated to satisfy the goal.
+
+Example:
+
+```json
+{
+  "locations": ["A", "B", "C", "D"],
+  "roads": [
+    { "from": "A", "to": "B", "status": "clear" },
+    { "from": "B", "to": "C", "status": "blocked" },
+    { "from": "C", "to": "D", "status": "clear" }
+  ],
+  "resources": {
+    "Bulldozer1": "A",
+    "MedTeam1": "A"
+  },
+  "victims_untreated": ["D"],
+  "goal_treated": ["D"]
+}
+```
+
+Notes:
+
+- Roads are treated as bidirectional internally.
+- Every location referenced in roads/resources/victims/goals must exist in `locations`.
+- A ready-to-run sample is included at `custom_scenario_example.json`.
 
 ## Validation & Quality
 

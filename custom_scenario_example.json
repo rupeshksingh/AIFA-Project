@@ -1,0 +1,14 @@
+{
+  "locations": ["A", "B", "C", "D"],
+  "roads": [
+    { "from": "A", "to": "B", "status": "clear" },
+    { "from": "B", "to": "C", "status": "blocked" },
+    { "from": "C", "to": "D", "status": "clear" }
+  ],
+  "resources": {
+    "Bulldozer1": "A",
+    "MedTeam1": "A"
+  },
+  "victims_untreated": ["D"],
+  "goal_treated": ["D"]
+}

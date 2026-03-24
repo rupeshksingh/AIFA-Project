@@ -1,8 +1,10 @@
 import argparse
 import heapq
 import itertools
+import json
 import time
 from collections.abc import Callable
+from pathlib import Path
 from typing import Literal, TypedDict
 
 from domain_models import Action, State
@@ -20,6 +22,20 @@ class PlannerResult(TypedDict, total=False):
     plan_length: int
     algorithm: str
     heuristic: str
+
+
+class CustomRoad(TypedDict):
+    from_location: str
+    to_location: str
+    status: str
+
+
+class CustomScenarioDocument(TypedDict):
+    locations: list[str]
+    roads: list[CustomRoad]
+    resources: dict[str, str]
+    victims_untreated: list[str]
+    goal_treated: list[str]
 
 
 def get_scenarios() -> dict[str, ScenarioData]:
@@ -47,6 +63,142 @@ def get_scenarios() -> dict[str, ScenarioData]:
         "simple": (simple_initial_state, simple_goal_conditions, simple_all_possible_actions),
         "complex": (complex_initial_state, complex_goal_conditions, complex_all_possible_actions),
     }
+
+
+def _as_string_list(value: object, field_name: str) -> list[str]:
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise ValueError(f"'{field_name}' must be a list of strings.")
+    if not value:
+        raise ValueError(f"'{field_name}' must not be empty.")
+    return value
+
+
+def _as_roads(value: object) -> list[CustomRoad]:
+    if not isinstance(value, list) or not value:
+        raise ValueError("'roads' must be a non-empty list of road entries.")
+
+    normalized_roads: list[CustomRoad] = []
+    for road in value:
+        if not isinstance(road, dict):
+            raise ValueError("Each road entry must be an object.")
+
+        from_location = road.get("from")
+        to_location = road.get("to")
+        status = road.get("status")
+        if not isinstance(from_location, str) or not isinstance(to_location, str):
+            raise ValueError("Each road requires string fields: 'from' and 'to'.")
+        if from_location == to_location:
+            raise ValueError("Road endpoints must be different.")
+        if status not in {"clear", "blocked"}:
+            raise ValueError("Road 'status' must be either 'clear' or 'blocked'.")
+
+        normalized_roads.append(
+            {
+                "from_location": from_location,
+                "to_location": to_location,
+                "status": status,
+            }
+        )
+    return normalized_roads
+
+
+def _as_resource_locations(value: object) -> dict[str, str]:
+    if not isinstance(value, dict) or not value:
+        raise ValueError("'resources' must be a non-empty object mapping resource to location.")
+
+    normalized_resources: dict[str, str] = {}
+    for resource_name, location in value.items():
+        if not isinstance(resource_name, str) or not isinstance(location, str):
+            raise ValueError("'resources' keys and values must be strings.")
+        normalized_resources[resource_name] = location
+    return normalized_resources
+
+
+def load_custom_scenario(file_path: str) -> ScenarioData:
+    """Load a custom scenario JSON file and convert it to planner-ready data."""
+    from disaster_scenario import generate_domain_actions
+
+    path = Path(file_path)
+    if not path.exists():
+        raise ValueError(f"Custom scenario file not found: {path}")
+
+    try:
+        document_raw = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Custom scenario JSON is invalid: {exc.msg}") from exc
+
+    if not isinstance(document_raw, dict):
+        raise ValueError("Custom scenario file must contain a JSON object.")
+
+    locations = _as_string_list(document_raw.get("locations"), "locations")
+    roads = _as_roads(document_raw.get("roads"))
+    resources_to_locations = _as_resource_locations(document_raw.get("resources"))
+    victims_untreated = _as_string_list(document_raw.get("victims_untreated"), "victims_untreated")
+    goal_treated = _as_string_list(document_raw.get("goal_treated"), "goal_treated")
+    custom_document: CustomScenarioDocument = {
+        "locations": locations,
+        "roads": roads,
+        "resources": resources_to_locations,
+        "victims_untreated": victims_untreated,
+        "goal_treated": goal_treated,
+    }
+
+    location_set = set(custom_document["locations"])
+    for road in custom_document["roads"]:
+        if road["from_location"] not in location_set or road["to_location"] not in location_set:
+            raise ValueError("Road endpoints must reference known locations.")
+
+    for resource_name, resource_location in custom_document["resources"].items():
+        if resource_location not in location_set:
+            raise ValueError(
+                f"Resource '{resource_name}' starts at unknown location "
+                f"'{resource_location}'."
+            )
+
+    for victim_location in custom_document["victims_untreated"]:
+        if victim_location not in location_set:
+            raise ValueError(f"Victim location '{victim_location}' is not in locations.")
+
+    for goal_location in custom_document["goal_treated"]:
+        if goal_location not in location_set:
+            raise ValueError(f"Goal location '{goal_location}' is not in locations.")
+
+    directional_roads: list[tuple[str, str]] = []
+    initial_facts: set[tuple[str, ...]] = set()
+    for road in custom_document["roads"]:
+        source = road["from_location"]
+        target = road["to_location"]
+        status = road["status"]
+
+        directional_roads.extend([(source, target), (target, source)])
+        initial_facts.update(
+            {
+                ("connected", source, target),
+                ("connected", target, source),
+            }
+        )
+
+        if status == "clear":
+            initial_facts.update({("clear", source, target), ("clear", target, source)})
+        else:
+            initial_facts.update({("blocked", source, target), ("blocked", target, source)})
+
+    resource_names = list(custom_document["resources"].keys())
+    for resource_name, resource_location in custom_document["resources"].items():
+        initial_facts.add(("at", resource_name, resource_location))
+
+    for location in custom_document["victims_untreated"]:
+        initial_facts.add(("victims_untreated", location))
+
+    goal_conditions = frozenset(
+        {("victims_treated", location) for location in custom_document["goal_treated"]}
+    )
+    actions = generate_domain_actions(
+        custom_document["locations"],
+        resource_names,
+        directional_roads,
+    )
+    return State(frozenset(initial_facts)), goal_conditions, actions
 
 
 def run_planner(
@@ -167,6 +319,15 @@ def parse_args() -> argparse.Namespace:
         help="Scenario to execute (default: simple).",
     )
     parser.add_argument(
+        "--custom-scenario-file",
+        type=str,
+        default=None,
+        help=(
+            "Path to a custom scenario JSON file. "
+            "If provided, this overrides --scenario."
+        ),
+    )
+    parser.add_argument(
         "--no-viz",
         action="store_true",
         help="Disable state-by-state visualization.",
@@ -212,7 +373,12 @@ def print_results(results: PlannerResult) -> None:
 
 def main() -> None:
     args = parse_args()
-    initial_state, goal_conditions, all_possible_actions = load_scenario_data(args.scenario)
+    if args.custom_scenario_file:
+        initial_state, goal_conditions, all_possible_actions = load_custom_scenario(
+            args.custom_scenario_file
+        )
+    else:
+        initial_state, goal_conditions, all_possible_actions = load_scenario_data(args.scenario)
     heuristic_fn: HeuristicFn | None = None
     heuristic_name = "none"
 
