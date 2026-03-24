@@ -1,0 +1,28 @@
+# Python cache/artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environment
+.venv/
+venv/
+
+# Tool caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Coverage/build artifacts
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# Local benchmark outputs
+benchmark_results.json
+benchmark_results.csv
+
+# Cursor
+CLAUDE.md
