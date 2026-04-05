@@ -9,7 +9,7 @@ This repository implements a **Classical AI planning system** for disaster-respo
 - **Interdisciplinary framing:** combines infrastructure constraints (roads/debris) with computational planning (search + heuristics).
 - **Classical AI scope:** symbolic state-space planning with explicit preconditions/effects.
 
-Phase-1 style proposal text is available in `PHASE1_PROPOSAL.md`. The full write-up for the project is in **`AIFA_Report.pdf`**.
+The full write-up for the project is in **`AIFA_Report.pdf`**.
 
 ## Classical AI Formulation
 
