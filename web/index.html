@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AIFA — Disaster Response Planning</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,600;0,9..144,700;1,9..144,600&family=Source+Sans+3:wght@400;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="https://unpkg.com/vis-network@9.1.9/styles/vis-network.min.css" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="hero">
+      <div class="hero-inner">
+        <p class="eyebrow">Classical AI · State-space search</p>
+        <h1>Disaster-response logistics planning</h1>
+        <p class="lede">
+          Symbolic STRIPS-style operators over roads, bulldozers, and medical teams—solved with BFS,
+          UCS, GBFS, and A* using domain heuristics.
+        </p>
+        <div class="hero-actions">
+          <a class="btn primary" href="#demo">Run the demo</a>
+          <a class="btn ghost" href="README.md">Repository README</a>
+          <a class="btn ghost" href="../AIFA_Report.pdf">Project report (PDF)</a>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <section class="section" id="domain">
+        <h2>Domain &amp; formulation</h2>
+        <div class="grid two">
+          <div class="card">
+            <h3>State</h3>
+            <p>
+              Immutable facts: connectivity, road status (<code>clear</code> / <code>blocked</code>),
+              resource positions, and victim treatment status at each location.
+            </p>
+          </div>
+          <div class="card">
+            <h3>Goal</h3>
+            <p>
+              Required victim sites must be <code>victims_treated</code>. The planner searches until
+              all goal facts hold.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="operators">
+        <h2>Operators</h2>
+        <ul class="operator-list">
+          <li><strong>Move(resource, from, to)</strong> — travel along a clear edge.</li>
+          <li><strong>Clear(bulldozer, from, to)</strong> — open a blocked road segment.</li>
+          <li><strong>Treat(med_team, location)</strong> — treat victims at a site.</li>
+        </ul>
+      </section>
+
+      <section class="section" id="techniques">
+        <h2>Implemented techniques</h2>
+        <div class="grid four">
+          <div class="card tight">
+            <h3>BFS</h3>
+            <p>Uninformed breadth-first search.</p>
+          </div>
+          <div class="card tight">
+            <h3>UCS</h3>
+            <p>Uniform cost (unit step cost in this domain).</p>
+          </div>
+          <div class="card tight">
+            <h3>GBFS</h3>
+            <p>Greedy best-first on a selectable heuristic.</p>
+          </div>
+          <div class="card tight">
+            <h3>A*</h3>
+            <p>f = path cost + heuristic; admissible options include victim count.</p>
+          </div>
+        </div>
+        <p class="muted">
+          Heuristics: <code>zero</code>, <code>untreated_victims</code>, <code>blocked_roads</code>,
+          <code>hybrid_response</code>.
+        </p>
+      </section>
+
+      <section class="section demo" id="demo">
+        <h2>Interactive demo</h2>
+        <p class="api-hint" id="apiHint">
+          Start the local server from the repo root:
+          <code>python web/server.py</code> (FastAPI + uvicorn). Then use the form below. Opening this
+          page over <code>file:</code> still calls <code>http://127.0.0.1:8765</code> for planning.
+        </p>
+
+        <div class="demo-shell">
+          <div class="demo-pane demo-pane--controls">
+            <form id="planForm" class="plan-form">
+              <div class="form-row">
+                <label for="scenarioMode">Scenario source</label>
+                <select id="scenarioMode" name="scenarioMode">
+                  <option value="simple">Built-in: simple</option>
+                  <option value="complex">Built-in: complex</option>
+                  <option value="custom">Custom (visual map or JSON)</option>
+                </select>
+              </div>
+
+              <div class="form-row hidden" id="customRow">
+                <span class="label-like" id="customRowLabel">Custom scenario</span>
+                <div class="segmented" role="tablist" aria-label="Custom scenario editor mode">
+                  <button
+                    type="button"
+                    class="segmented-btn is-active"
+                    data-custom-tab="visual"
+                    aria-selected="true"
+                  >
+                    Visual map
+                  </button>
+                  <button type="button" class="segmented-btn" data-custom-tab="json" aria-selected="false">
+                    JSON
+                  </button>
+                </div>
+
+                <div id="customVisualPanel" class="custom-panel">
+                  <p class="muted small builder-hint">
+                    Use the <strong>Edit</strong> toolbar on the graph to add nodes and edges. Select an
+                    edge, then <strong>Toggle blocked/clear</strong>. Resources must be named
+                    <code>Bulldozer…</code> or <code>MedTeam…</code>.
+                  </p>
+                  <div class="builder-toolbar">
+                    <button type="button" class="btn ghost btn-sm" id="toggleRoadBtn">
+                      Toggle blocked/clear
+                    </button>
+                    <button type="button" class="btn ghost btn-sm" id="loadExampleMapBtn">
+                      Load example
+                    </button>
+                  </div>
+                  <div id="mapBuilder" class="graph graph-builder" tabindex="0" aria-label="Map editor"></div>
+                  <div class="builder-section">
+                    <h4 class="builder-heading">Resources</h4>
+                    <div id="resourceRows" class="resource-rows"></div>
+                    <div class="builder-btn-row">
+                      <button type="button" class="btn ghost btn-sm" id="addBulldozerBtn">+ Bulldozer</button>
+                      <button type="button" class="btn ghost btn-sm" id="addMedTeamBtn">+ Med team</button>
+                    </div>
+                  </div>
+                  <div class="builder-section">
+                    <h4 class="builder-heading">Victims &amp; goals</h4>
+                    <div id="victimGoalRows" class="victim-goal-rows"></div>
+                    <p class="muted small">
+                      <em>Untreated</em> = victims at start; <em>Goal treated</em> = must be treated in the
+                      goal.
+                    </p>
+                  </div>
+                  <div class="builder-btn-row">
+                    <button type="button" class="btn ghost btn-sm" id="exportMapJson">Export to JSON tab</button>
+                    <button type="button" class="btn ghost btn-sm" id="loadMapJson">Load from JSON tab</button>
+                  </div>
+                </div>
+
+                <div id="customJsonPanel" class="custom-panel hidden">
+                  <label for="customJson">Scenario JSON (<code>custom_scenario_example.json</code> shape)</label>
+                  <textarea id="customJson" name="customJson" rows="14" spellcheck="false"></textarea>
+                </div>
+              </div>
+
+              <div class="form-row grid two tight-grid">
+                <div>
+                  <label for="algorithm">Algorithm</label>
+                  <select id="algorithm" name="algorithm">
+                    <option value="bfs">bfs</option>
+                    <option value="ucs">ucs</option>
+                    <option value="gbfs">gbfs</option>
+                    <option value="astar">astar</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="heuristic">Heuristic (GBFS / A*)</label>
+                  <select id="heuristic" name="heuristic">
+                    <option value="untreated_victims">untreated_victims</option>
+                    <option value="zero">zero</option>
+                    <option value="blocked_roads">blocked_roads</option>
+                    <option value="hybrid_response">hybrid_response</option>
+                  </select>
+                </div>
+              </div>
+
+              <button type="submit" class="btn primary" id="runBtn">Run planner</button>
+            </form>
+          </div>
+
+          <div class="demo-pane demo-pane--output">
+            <div id="status" class="status" aria-live="polite"></div>
+            <div id="demoPlaceholder" class="demo-placeholder">
+              <p>
+                Run the planner to see metrics, the action list, and step-by-step state playback on the
+                map.
+              </p>
+            </div>
+            <div id="results" class="results hidden">
+              <div class="metrics" id="metrics"></div>
+              <div class="split">
+                <div>
+                  <h3>Plan</h3>
+                  <ol id="planList" class="plan-list"></ol>
+                </div>
+                <div>
+                  <h3>State playback</h3>
+                  <div class="playback">
+                    <button type="button" class="btn ghost" id="stepPrev" disabled>Previous</button>
+                    <span id="stepLabel" class="step-label"></span>
+                    <button type="button" class="btn ghost" id="stepNext" disabled>Next</button>
+                  </div>
+                  <div class="graph-legend" id="graphLegend" aria-label="Legend">
+                    <span class="lg-item"
+                      ><i class="lg-swatch lg-road-clear"></i> Clear</span
+                    >
+                    <span class="lg-item"
+                      ><i class="lg-swatch lg-road-blocked"></i> Blocked</span
+                    >
+                    <span class="lg-item"
+                      ><i class="lg-swatch lg-node-base"></i> Location</span
+                    >
+                    <span class="lg-item"
+                      ><i class="lg-swatch lg-node-untreated"></i> Victims untreated</span
+                    >
+                    <span class="lg-item"
+                      ><i class="lg-swatch lg-node-treated"></i> Victims treated</span
+                    >
+                  </div>
+                  <div id="graph" class="graph" tabindex="0" aria-label="State graph"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section muted-footer">
+        <p>
+          Core implementation: Python planner and scenarios in the repository root. This page is a
+          lightweight front-end; Matplotlib-based playback remains available via
+          <code>python planner.py</code>.
+        </p>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <p>AIFA — Classical AI course project · Emergency logistics &amp; search</p>
+    </footer>
+
+    <script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

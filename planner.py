@@ -114,21 +114,9 @@ def _as_resource_locations(value: object) -> dict[str, str]:
     return normalized_resources
 
 
-def load_custom_scenario(file_path: str) -> ScenarioData:
-    """Load a custom scenario JSON file and convert it to planner-ready data."""
+def custom_scenario_from_document(document_raw: dict[str, object]) -> ScenarioData:
+    """Convert a custom scenario object (file or API JSON) into planner-ready data."""
     from disaster_scenario import generate_domain_actions
-
-    path = Path(file_path)
-    if not path.exists():
-        raise ValueError(f"Custom scenario file not found: {path}")
-
-    try:
-        document_raw = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"Custom scenario JSON is invalid: {exc.msg}") from exc
-
-    if not isinstance(document_raw, dict):
-        raise ValueError("Custom scenario file must contain a JSON object.")
 
     locations = _as_string_list(document_raw.get("locations"), "locations")
     roads = _as_roads(document_raw.get("roads"))
@@ -199,6 +187,23 @@ def load_custom_scenario(file_path: str) -> ScenarioData:
         directional_roads,
     )
     return State(frozenset(initial_facts)), goal_conditions, actions
+
+
+def load_custom_scenario(file_path: str) -> ScenarioData:
+    """Load a custom scenario JSON file and convert it to planner-ready data."""
+    path = Path(file_path)
+    if not path.exists():
+        raise ValueError(f"Custom scenario file not found: {path}")
+
+    try:
+        document_raw = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Custom scenario JSON is invalid: {exc.msg}") from exc
+
+    if not isinstance(document_raw, dict):
+        raise ValueError("Custom scenario file must contain a JSON object.")
+
+    return custom_scenario_from_document(document_raw)
 
 
 def run_planner(
