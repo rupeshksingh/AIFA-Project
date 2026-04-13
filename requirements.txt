@@ -1,5 +1,6 @@
 fastapi-0.135.3
-uvicorn-0.44.0 
+uvicorn-0.44.0
+markdown==3.7
 matplotlib==3.10.8
 networkx==3.6.1
 pytest==8.4.2

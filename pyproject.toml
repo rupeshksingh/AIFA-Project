@@ -22,5 +22,5 @@ strict_equality = true
 exclude = ["^\\.venv/"]
 
 [[tool.mypy.overrides]]
-module = ["matplotlib", "matplotlib.*", "networkx", "networkx.*"]
+module = ["matplotlib", "matplotlib.*", "networkx", "networkx.*", "markdown"]
 ignore_missing_imports = true

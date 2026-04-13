@@ -18,10 +18,11 @@ REPO_ROOT = WEB_DIR.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from fastapi import FastAPI  # noqa: E402
+import markdown  # noqa: E402
+from fastapi import FastAPI, HTTPException  # noqa: E402
 from fastapi.exceptions import RequestValidationError  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
-from fastapi.responses import JSONResponse  # noqa: E402
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 from pydantic import BaseModel  # noqa: E402
 from starlette.requests import Request  # noqa: E402
@@ -172,6 +173,60 @@ async def api_plan(body: PlanRequest) -> JSONResponse:
     response = _build_response_body(initial_state, results)
     status = 200 if results["success"] else 422
     return JSONResponse(status_code=status, content=response)
+
+
+REPORT_PDF = REPO_ROOT / "AIFA_Report.pdf"
+README_MD = WEB_DIR / "README.md"
+
+
+def _readme_html_document() -> str:
+    raw = README_MD.read_text(encoding="utf-8")
+    body = markdown.markdown(
+        raw,
+        extensions=["fenced_code", "tables", "sane_lists"],
+    )
+    return f"""<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Repository README — AIFA</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,600;0,9..144,700;1,9..144,600&family=Source+Sans+3:wght@400;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body class="readme-page">
+    <header class="readme-toolbar">
+      <a class="btn ghost" href="/">← Back to showcase</a>
+      <a class="btn ghost" href="/AIFA_Report.pdf">Project report (PDF)</a>
+    </header>
+    <article class="readme-body">{body}</article>
+  </body>
+</html>
+"""
+
+
+@app.get("/AIFA_Report.pdf")
+async def aifa_report_pdf() -> FileResponse:
+    if not REPORT_PDF.is_file():
+        raise HTTPException(status_code=404, detail="AIFA_Report.pdf not found at repository root.")
+    return FileResponse(
+        REPORT_PDF,
+        media_type="application/pdf",
+        filename="AIFA_Report.pdf",
+    )
+
+
+@app.get("/README.md", response_class=HTMLResponse)
+@app.get("/README", response_class=HTMLResponse)
+async def readme_rendered() -> HTMLResponse:
+    if not README_MD.is_file():
+        raise HTTPException(status_code=404, detail="README.md missing from web directory.")
+    return HTMLResponse(content=_readme_html_document())
 
 
 app.mount("/", StaticFiles(directory=str(WEB_DIR), html=True), name="static")
